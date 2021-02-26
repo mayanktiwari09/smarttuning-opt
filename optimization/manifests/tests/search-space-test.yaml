@@ -1,0 +1,35 @@
+apiVersion: "smarttuning.ibm.com/v1alpha2"
+kind: SearchSpace
+metadata:
+  name: acmeair-nginx-test-service-ss
+spec:
+  deployment: acmeair-nginx-test-service
+  service: nginx-test-svc
+  namespace: default
+  manifests:
+    - name: acmeair-nginx-test-service
+      type: deployment
+    - name: nginx-test-cm-2
+      type: configMap
+data:
+  - name: acmeair-nginx-test-service
+    tunables:
+      number:
+        - name: memory
+          lower:
+            value: 128
+          upper:
+            value: 256
+          step: 32
+          real: False
+  - name: nginx-test-cm-2
+    tunables:
+      number:
+        - name: key
+          lower:
+            value: 10
+          upper:
+            value: 30
+          step: 1
+          real: False
+

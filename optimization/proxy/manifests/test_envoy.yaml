@@ -1,0 +1,134 @@
+#
+# add prometheus config to scrap envoy
+#
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: front-envoy
+data:
+  # https://www.envoyproxy.io/docs/envoy/latest/start/sandboxes/front_proxy.html
+  front-envoy.yaml: |
+    admin:
+      access_log_path: /tmp/admin_access.log
+      address:
+        socket_address: { address: 0.0.0.0, port_value: 9901 }
+
+    static_resources:
+      listeners:
+      - name: listener_0
+        address:
+          socket_address: { address: 0.0.0.0, port_value: 8000 }
+        filter_chains:
+        - filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              stat_prefix: ingress_http
+              codec_type: AUTO
+              route_config:
+                name: local_route
+                virtual_hosts:
+                - name: local_service
+                  domains: ["*"]
+                  routes:
+                  - match: { prefix: "" }
+                    route: { cluster: some_service }
+              http_filters:
+              - name: envoy.filters.http.router
+      clusters:
+      - name: some_service
+        connect_timeout: 0.25s
+        type: STATIC
+        lb_policy: ROUND_ROBIN
+        load_assignment:
+          cluster_name: some_service
+          endpoints:
+          - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: 0.0.0.0
+                    port_value: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: acmeair
+  labels:
+    app: acmeair
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: acmeair
+      labels:
+        app: acmeair
+    spec:
+      containers:
+        - name: proxy
+          image: envoyproxy/envoy-dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - bash
+            - "-c"
+            - /usr/local/bin/envoy -c /etc/front-envoy.yaml --service-cluster front-proxy
+          ports:
+            - containerPort: 8000
+            - containerPort: 9901
+          volumeMounts:
+            - mountPath: /etc/front-envoy.yaml
+              subPath: front-envoy.yaml
+              name: front-envoy
+        - name: acmeair
+          image: liberty-acmeair-k8s
+          imagePullPolicy: Never
+          readinessProbe:
+            httpGet:
+              port: 80
+              path: /acmeair-webapp/
+            initialDelaySeconds: 30
+            failureThreshold: 3
+            periodSeconds: 10
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: acmeair-config
+          volumeMounts:
+            - mountPath: /etc/acmeair-config
+              name: acmeair-config
+            - mountPath: /config/jvm.options
+              subPath: jvm.options
+              name: jvm-config
+      restartPolicy: Always
+      volumes:
+        - name: front-envoy
+          configMap:
+            name: front-envoy
+        - name: acmeair-config
+          configMap:
+            name: acmeair-config-train
+        - name: jvm-config
+          configMap:
+            name: jvm-config-train
+  selector:
+    matchLabels:
+      app: acmeair
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: acmeair
+spec:
+  selector:
+    app: acmeair
+  ports:
+    - port: 8888
+      targetPort: 8000
+      nodePort: 30080
+      name: app
+    - port: 9901
+      targetPort: 9901
+      name: smarttuning
+      nodePort: 30091
+  type: NodePort

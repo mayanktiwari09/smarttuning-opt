@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: kube-monitoring
+data:
+  prometheus.yaml: |-
+    apiVersion: 1
+    datasources:
+    - access: proxy
+      editable: true
+      name: prometheus
+      orgId: 1
+      type: prometheus
+      url: http://prometheus-service.kube-monitoring.svc:9090
+      version: 1
+    providers:
+    - name: smart-tuning
+      orgId: 1
+      editable: true
+      type: file
+      options:
+        path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: kube-monitoring
+data:
+  # [server]
+  # root_url = http://localhost:8001/api/v1/namespaces/kube-monitoring/services/grafana-service/proxy/
+  # server_from_sub_path = true
+  grafana.ini: |-
+    [auth.anonymous]
+    enabled = true
+    # Organization name that should be used for unauthenticated users
+    org_name = Main Org.
+    # Role for unauthenticated users, other valid values are `Editor` and `Admin`
+    org_role = Admin
+    [auth.basic]
+    enabled = false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-deployment
+  namespace: kube-monitoring
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: grafana-server
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - kind-worker
+                      - docker-desktop
+      containers:
+        - name: grafana
+          image: grafana/grafana:7.0.1
+          #image: https://quay.io/repository/app-sre/grafana:7.0.1
+          env:
+            - name: GF_INSTALL_PLUGINS
+              value: jdbranham-diagram-panel
+          ports:
+            - containerPort: 3000
+          resources:
+            limits:
+              memory: 1024Mi
+              cpu: 100m
+          volumeMounts:
+            - mountPath: /etc/grafana/provisioning/datasources
+              name: grafana-datasources
+              readOnly: false
+            - mountPath: /etc/grafana/grafana.ini
+              subPath: grafana.ini
+              name: grafana-config
+            - mountPath: /var/lib/grafana
+              readOnly: false
+              name: grafana-data
+      securityContext:
+        runAsUser: 472
+        fsGroup: 472
+      volumes:
+        - name: grafana-datasources
+          configMap:
+            defaultMode: 420
+            name: grafana-datasources
+        - name: grafana-config
+          configMap:
+            name: grafana-config
+        - name: grafana-data
+          emptyDir: {}
+  #          hostPath:
+  #            type: DirectoryOrCreate
+  #            # change the ownership path to 472:472
+  #            path: /smarttuning/grafana
+  selector:
+    matchLabels:
+      app: grafana-server
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  namespace: kube-monitoring
+  annotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/port:   '9090'
+spec:
+  selector:
+    app: grafana-server
+  type: NodePort
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30030
+---

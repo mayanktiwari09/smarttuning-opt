@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: daytrader-db
+  labels:
+    app: daytrader-db
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: daytrader-db
+      labels:
+        app: daytrader-db
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                      - kind-worker
+                      - docker-desktop
+      volumes:
+        - name: db2-volume
+          emptyDir:
+            medium: "Memory"
+      containers:
+        - name: daytrader-db
+          image: smarttuning/derby
+          volumeMounts:
+            - mountPath: /data
+              name: db2-volume
+          securityContext:
+            privileged: true
+          ports:
+            - containerPort: 1527
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "4"
+              memory: 4Gi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+  selector:
+    matchLabels:
+      app: daytrader-db

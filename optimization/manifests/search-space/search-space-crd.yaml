@@ -1,0 +1,124 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tuning
+rules:
+  - apiGroups: ["*"]
+    resources:
+      - configmaps
+      - deployments
+      - searchspaces
+    verbs: ["get","list","watch","create","update","patch","delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tuning
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tuning
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: default
+---
+# https://kubernetes.io/docs/tasks/access-kubernetes-api/custom-resources/custom-resource-definitions/
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: searchspaces.smarttuning.ibm.com
+spec:
+  group: smarttuning.ibm.com
+  scope: Namespaced
+  names:
+    plural: searchspaces
+    singular: searchspace
+    kind: SearchSpace
+    shortNames:
+      - ss
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                manifests:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        description: "training manifest name"
+                        type: string
+                      nameProd:
+                        descpription: "production manifest name"
+                        type: string
+                      namespace:
+                        description: "namespace where manifest is deployed"
+                        type: string
+                      type:
+                        type: object
+                        properties:
+                          deployment:
+                            type: boolean
+                            default: false
+                          containers:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                ratio:
+                                  type: number
+                          configMap:
+                            type: string
+                            description: "is it data a config file (file) or environment variables (envVar)?"
+                            pattern: '(jvm|envVar)'
+                          filename:
+                            type: string
+                            description: "if configMap is file, then assign its name here"
+                            default: ''
+                      params:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            number:
+                              type: object
+                              properties:
+                                lower:
+                                  type: number
+                                upper:
+                                  type: number
+                                step:
+                                  type: number
+                                continuous:
+                                  type: boolean
+                                  default: true
+                            boolean:
+                              type: boolean
+                              default: False
+                            options:
+                              type: object
+                              properties:
+                                type:
+                                  type: string
+                                  pattern: '(number|boolean|string)'
+                                values:
+                                  type: array
+                                  items:
+                                    type: string
+                        oneOf:
+                          - required: ["number", "boolean", "options"]
+                        required: ["params"]
+# https://kubernetes.io/docs/reference/kubectl/jsonpath/
+# https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/

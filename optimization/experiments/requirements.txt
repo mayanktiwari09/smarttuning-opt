@@ -1,0 +1,10 @@
+pandas
+hyperopt
+tensorflow
+keras
+matplotlib
+prometheus-pandas
+requests
+kubernetes
+
+SecretColors
